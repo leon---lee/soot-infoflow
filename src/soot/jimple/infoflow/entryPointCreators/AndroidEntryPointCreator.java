@@ -77,6 +77,7 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 	private final Collection<String> additionalEntryPoints;
 	
 	private Map<String, List<String>> callbackFunctions;
+	private Map<String, List<String>> fragmentComponents;
 	private boolean modelAdditionalMethods = false;
 	
 	/**
@@ -141,6 +142,28 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 	 */
 	public Map<String, List<String>> getCallbackFunctions() {
 		return callbackFunctions;
+	}
+	
+	/**
+	 * Sets the list of fragment components to be integrated into the Android
+	 * lifecycle
+	 * @param fragmentComponents The list of callback functions to be integrated
+	 * into the Android lifecycle. This is a mapping from the Android element
+	 * class (activity) to the list of callback methods for that
+	 * element.
+	 */
+	public void setFragmentComponents(Map<String, List<String>> fragmentComponents) {
+		this.fragmentComponents = fragmentComponents;
+	}
+	
+	/**
+	 * Returns the list of fragment components of the Android lifecycle. 
+	 * @return fragmentComponents The list of callback functions of the Android lifecycle. 
+	 * This is a mapping from the Android element class (activity) to the list 
+	 * of callback methods for that element.
+	 */
+	public Map<String, List<String>> getFragmentComponents() {
+		return fragmentComponents;
 	}
 	
 	@Override
@@ -724,9 +747,6 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 			SootClass currentClass,
 			JNopStmt endClassStmt,
 			Local classLocal) {
-		// As we don't know the order in which the different Android lifecycles
-		// run, we allow for each single one of them to be skipped
-		createIfStmt(endClassStmt);
 		
 		Set<SootClass> referenceClasses = new HashSet<SootClass>();
 		if (applicationClass != null)
@@ -734,6 +754,15 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 		for (SootClass callbackClass : this.applicationCallbackClasses)
 			referenceClasses.add(callbackClass);
 		referenceClasses.add(currentClass);
+		
+		Map<SootClass,Local> fragmentLocals = null;
+		
+		//construct fragment instance
+		fragmentLocals = generateFragmentClassConstruction(currentClass, body, referenceClasses);
+		
+		// As we don't know the order in which the different Android lifecycles
+		// run, we allow for each single one of them to be skipped
+		createIfStmt(endClassStmt);
 		
 		// 1. onCreate:
 		Stmt onCreateStmt = new JNopStmt();
@@ -747,6 +776,14 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 				createIfStmt(onCreateStmt2);
 		}
 		
+		{
+			//fragment lifecycle before Activity finishes onCreate
+			generateFragmentLifeCycleBeforeActivityOnCreate(fragmentLocals, entryPoints, classLocal);
+			
+			//fragment lifecycle after Activity finishes onCreate
+			generateFragmentLifeCycleAfterActivityOnCreate(fragmentLocals, entryPoints);
+		}
+		
 		//2. onStart:
 		Stmt onStartStmt = new JNopStmt();
 		body.getUnits().add(onStartStmt);
@@ -758,6 +795,10 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 			if (found && onStartStmt2 != null)
 				createIfStmt(onStartStmt2);
 		}
+		
+		//add fragment onStart
+		generateFragmentLifeCycleMethod(fragmentLocals, AndroidEntryPointConstants.FRAGMENT_ONSTART, entryPoints);
+		
 		searchAndBuildMethod(AndroidEntryPointConstants.ACTIVITY_ONRESTOREINSTANCESTATE, currentClass, entryPoints, classLocal);
 		searchAndBuildMethod(AndroidEntryPointConstants.ACTIVITY_ONPOSTCREATE, currentClass, entryPoints, classLocal);
 		
@@ -772,6 +813,11 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 			if (found && onResumeStmt2 != null)
 				createIfStmt(onResumeStmt2);
 		}
+		
+		//add fragment onResume
+		generateFragmentLifeCycleMethod(fragmentLocals, AndroidEntryPointConstants.FRAGMENT_ONRESUME, entryPoints);
+				
+		
 		searchAndBuildMethod
 				(AndroidEntryPointConstants.ACTIVITY_ONPOSTRESUME, currentClass, entryPoints, classLocal);
 		
@@ -804,6 +850,9 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 				createIfStmt(startWhileStmt);
 		}
 				
+		//add fragment onPause
+		generateFragmentLifeCycleMethod(fragmentLocals, AndroidEntryPointConstants.FRAGMENT_ONPAUSE, entryPoints);
+				
 		//4. onPause:
 		Stmt onPause = searchAndBuildMethod(AndroidEntryPointConstants.ACTIVITY_ONPAUSE, currentClass, entryPoints, classLocal);
 		boolean hasAppOnPause = addCallbackMethods(applicationClass, referenceClasses,
@@ -821,6 +870,10 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 		// (to stop is fall-through, no need to add)
 		createIfStmt(onResumeStmt);
 		// createIfStmt(onCreateStmt);		// no, the process gets killed in between
+		
+		//add fragment onStop
+		generateFragmentLifeCycleMethod(fragmentLocals, AndroidEntryPointConstants.FRAGMENT_ONSTOP, entryPoints);
+				
 		
 		//5. onStop:
 		Stmt onStop = searchAndBuildMethod(AndroidEntryPointConstants.ACTIVITY_ONSTOP, currentClass, entryPoints, classLocal);
@@ -841,6 +894,10 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 		
 		//7. onDestroy
 		body.getUnits().add(stopToDestroyStmt);
+		
+		//fragment lifecycle before Activity destroy
+		generateFragmentLifeCycleBeforeActivityOnDestroy(fragmentLocals, entryPoints);
+		
 		Stmt onDestroy = searchAndBuildMethod(AndroidEntryPointConstants.ACTIVITY_ONDESTROY, currentClass, entryPoints, classLocal);
 		boolean hasAppOnDestroy = addCallbackMethods(applicationClass, referenceClasses,
 				AndroidEntryPointConstants.APPLIFECYCLECALLBACK_ONACTIVITYDESTROYED);
@@ -850,6 +907,124 @@ public class AndroidEntryPointCreator extends BaseEntryPointCreator implements I
 		createIfStmt(endClassStmt);
 	}
 	
+	private void generateFragmentLifeCycleBeforeActivityOnCreate(Map<SootClass,Local> fragmentLocals, Set<String> entryPoints, Local classLocal){
+		if(fragmentLocals != null && !fragmentLocals.isEmpty()){
+			JNopStmt endFragmentLiferCycleStmt = new JNopStmt();
+			createIfStmt(endFragmentLiferCycleStmt);
+			Stmt beforeFragmentLiferCycleMethod = Jimple.v().newNopStmt();
+			body.getUnits().add(beforeFragmentLiferCycleMethod);
+			for(Entry<SootClass,Local> entry : fragmentLocals.entrySet()) {
+				JNopStmt thenStmt = new JNopStmt();
+				createIfStmt(thenStmt);
+				Stmt fragmentLifeCycleStmt = searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONATTACH,
+						entry.getKey(), entryPoints, entry.getValue());
+				//set the argument of onAttach to the activity
+				if(fragmentLifeCycleStmt != null && fragmentLifeCycleStmt.containsInvokeExpr())
+					fragmentLifeCycleStmt.getInvokeExpr().setArg(0, classLocal);
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONCREATE,
+						entry.getKey(), entryPoints, entry.getValue());
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONCREATEVIEW,
+						entry.getKey(), entryPoints, entry.getValue());
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONVIEWCREATED,
+						entry.getKey(), entryPoints, entry.getValue());
+				body.getUnits().add(thenStmt);
+			}
+			createIfStmt(beforeFragmentLiferCycleMethod);
+			body.getUnits().add(endFragmentLiferCycleStmt);
+		}
+	}
+	
+	private void generateFragmentLifeCycleAfterActivityOnCreate(Map<SootClass,Local> fragmentLocals, Set<String> entryPoints){
+		if(fragmentLocals != null && !fragmentLocals.isEmpty()){
+			JNopStmt endFragmentLiferCycleStmt = new JNopStmt();
+			createIfStmt(endFragmentLiferCycleStmt);
+			Stmt beforeFragmentLiferCycleMethod = Jimple.v().newNopStmt();
+			body.getUnits().add(beforeFragmentLiferCycleMethod);
+			for(Entry<SootClass,Local> entry : fragmentLocals.entrySet()) {
+				JNopStmt thenStmt = new JNopStmt();
+				createIfStmt(thenStmt);
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONACTIVITYCREATED,
+						entry.getKey(), entryPoints, entry.getValue());
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONVIEWSTATERESTORED,
+						entry.getKey(), entryPoints, entry.getValue());
+				body.getUnits().add(thenStmt);
+			}
+			createIfStmt(beforeFragmentLiferCycleMethod);
+			body.getUnits().add(endFragmentLiferCycleStmt);
+		}
+	}
+	
+	private void generateFragmentLifeCycleBeforeActivityOnDestroy(Map<SootClass,Local> fragmentLocals, Set<String> entryPoints){
+		if(fragmentLocals != null && !fragmentLocals.isEmpty()){
+			JNopStmt endFragmentLiferCycleStmt = new JNopStmt();
+			createIfStmt(endFragmentLiferCycleStmt);
+			Stmt beforeFragmentLiferCycleMethod = Jimple.v().newNopStmt();
+			body.getUnits().add(beforeFragmentLiferCycleMethod);
+			for(Entry<SootClass,Local> entry : fragmentLocals.entrySet()) {
+				JNopStmt thenStmt = new JNopStmt();
+				createIfStmt(thenStmt);
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONDESTROYVIEW,
+						entry.getKey(), entryPoints, entry.getValue());
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONDESTROY,
+						entry.getKey(), entryPoints, entry.getValue());
+				searchAndBuildMethod(AndroidEntryPointConstants.FRAGMENT_ONDETACH,
+						entry.getKey(), entryPoints, entry.getValue());
+				body.getUnits().add(thenStmt);
+			}
+			createIfStmt(beforeFragmentLiferCycleMethod);
+			body.getUnits().add(endFragmentLiferCycleStmt);
+		}
+	}
+	
+	private void generateFragmentLifeCycleMethod(Map<SootClass,Local> fragmentLocals, String subsignature, Set<String> entryPoints){
+		if(fragmentLocals != null && !fragmentLocals.isEmpty()){
+			JNopStmt endFragmentLiferCycleStmt = new JNopStmt();
+			createIfStmt(endFragmentLiferCycleStmt);
+			Stmt beforeFragmentLiferCycleMethod = Jimple.v().newNopStmt();
+			body.getUnits().add(beforeFragmentLiferCycleMethod);
+			for(Entry<SootClass,Local> entry : fragmentLocals.entrySet()) {
+				JNopStmt thenStmt = new JNopStmt();
+				createIfStmt(thenStmt);
+				Stmt fragmentOnCreate = searchAndBuildMethod
+						(subsignature, entry.getKey(), entryPoints, entry.getValue());
+				body.getUnits().add(thenStmt);
+			}
+			createIfStmt(beforeFragmentLiferCycleMethod);
+			body.getUnits().add(endFragmentLiferCycleStmt);
+		}
+	}
+	
+	/**
+	 * Construct the instance of fragment class in an activity
+	 * @param currentClass The class in which the fragment is added
+	 * @param body2 The body to which to add the new statements ("new" statement, constructor call, etc.)
+	 * @param referenceClasses If a constructor call requires an object 
+	 *        of a type which is compatible with one of the types in this list, the already-created 
+	 *        object is used instead of creating a new one.
+	 */
+	private Map<SootClass,Local> generateFragmentClassConstruction(SootClass currentClass, JimpleBody body2,
+			Set<SootClass> referenceClasses) {
+		// If no fragment are attached for the current class, there is nothing
+		// to be done here
+		if (currentClass == null)
+			return null;
+		if (this.fragmentComponents == null || !this.fragmentComponents.containsKey(currentClass.getName())) return null;
+		// Get all fragment classes
+		Map<SootClass,Local> fragmentLocals = new HashMap<SootClass,Local>();
+		for (String fragmentSig : this.fragmentComponents.get(currentClass.getName())) {
+			// Parse the fragment 
+			SootClass fragmentClass = Scene.v().forceResolve(fragmentSig, SootClass.SIGNATURES);;
+			if (fragmentClass == null) {
+//				logger.warn("Could not find fragment classes {}", fragmentSig);
+				continue;
+			}
+			Local fragmentLocal = generateClassConstructor(fragmentClass, body2, referenceClasses);
+			fragmentLocals.put(fragmentClass,fragmentLocal);
+		}			
+		
+		return fragmentLocals;
+	}
+
 	/**
 	 * Adds calls to the callback methods defined in the application class
 	 * @param applicationClass The class in which the user-defined application
