@@ -27,6 +27,21 @@ class AndroidEntryPointConstants {
 	public static final String BROADCASTRECEIVERCLASS = "android.content.BroadcastReceiver";
 	public static final String CONTENTPROVIDERCLASS = "android.content.ContentProvider";
 	public static final String APPLICATIONCLASS = "android.app.Application";
+	public static final String FRAGMENTCLASS = "android.app.Fragment";
+	
+	public static final String FRAGMENT_ONCREATE = "void onCreate(android.os.Bundle)";
+	public static final String FRAGMENT_ONSTART = "void onStart()";
+	public static final String FRAGMENT_ONVIEWSTATERESTORED = "void onViewStateRestored(android.os.Bundle)";
+	public static final String FRAGMENT_ONATTACH= "void onAttach(android.app.Activity)";
+	public static final String FRAGMENT_ONRESUME = "void onResume()";
+	public static final String FRAGMENT_ONCREATEVIEW = "android.view.View onCreateView(android.view.LayoutInflater,android.view.ViewGroup,android.os.Bundle)";
+	public static final String FRAGMENT_ONVIEWCREATED = "void onViewCreated(android.view.View,android.os.Bundle)";
+	public static final String FRAGMENT_ONACTIVITYCREATED = "void onActivityCreated(android.os.Bundle)";
+	public static final String FRAGMENT_ONDESTROYVIEW = "void onDestroyView()";
+	public static final String FRAGMENT_ONPAUSE = "void onPause()";
+	public static final String FRAGMENT_ONSTOP = "void onStop()";
+	public static final String FRAGMENT_ONDETACH = "void onDetach()";
+	public static final String FRAGMENT_ONDESTROY = "void onDestroy()";
 	
 	public static final String ACTIVITY_ONCREATE = "void onCreate(android.os.Bundle)";
 	public static final String ACTIVITY_ONSTART = "void onStart()";
@@ -90,6 +105,20 @@ class AndroidEntryPointConstants {
 		ACTIVITY_ONCREATEDESCRIPTION,
 		ACTIVITY_ONPOSTCREATE,
 		ACTIVITY_ONPOSTRESUME};
+
+	private static final String[] fragmentMethods = {FRAGMENT_ONCREATE,
+			FRAGMENT_ONVIEWSTATERESTORED,
+			FRAGMENT_ONATTACH,
+			FRAGMENT_ONSTART,
+			FRAGMENT_ONRESUME,
+			FRAGMENT_ONCREATEVIEW,
+			FRAGMENT_ONVIEWCREATED,
+			FRAGMENT_ONACTIVITYCREATED,
+			FRAGMENT_ONDESTROYVIEW,
+			FRAGMENT_ONPAUSE,
+			FRAGMENT_ONSTOP,
+			FRAGMENT_ONDETACH,
+			FRAGMENT_ONDESTROY};
 	
 	private static final String[] serviceMethods = {SERVICE_ONCREATE,
 		SERVICE_ONDESTROY,
@@ -131,6 +160,10 @@ class AndroidEntryPointConstants {
 		return Arrays.asList(activityMethods);
 	}
 	
+	public static List<String> getFragmentLifecycleMethods(){
+		return Arrays.asList(fragmentMethods);
+	}
+	
 	public static List<String> getServiceLifecycleMethods(){
 		return Arrays.asList(serviceMethods);
 	}
@@ -169,7 +202,8 @@ class AndroidEntryPointConstants {
 				|| className.equals(SERVICECLASS)
 				|| className.equals(BROADCASTRECEIVERCLASS)
 				|| className.equals(CONTENTPROVIDERCLASS)
-				|| className.equals(APPLICATIONCLASS);
+				|| className.equals(APPLICATIONCLASS)
+				|| className.equals(FRAGMENTCLASS);
 	}
 
 }
