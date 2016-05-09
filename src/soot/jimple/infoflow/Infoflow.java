@@ -396,20 +396,20 @@ public class Infoflow extends AbstractInfoflow {
 		
 		if (results == null || results.getResults().isEmpty())
 			logger.warn("No results found.");
-		else for (ResultSinkInfo sink : results.getResults().keySet()) {
-			logger.info("The sink {} in method {} was called with values from the following sources:",
-                    sink, iCfg.getMethodOf(sink.getSink()).getSignature() );
-			for (ResultSourceInfo source : results.getResults().get(sink)) {
-				logger.info("- {} in method {}",source, iCfg.getMethodOf(source.getSource()).getSignature());
-				if (source.getPath() != null) {
-					logger.info("\ton Path: ");
-					for (Unit p : source.getPath()) {
-						logger.info("\t -> " + iCfg.getMethodOf(p));
-						logger.info("\t\t -> " + p);
-					}
-				}
-			}
-		}
+//		else for (ResultSinkInfo sink : results.getResults().keySet()) {
+//			logger.info("The sink {} in method {} was called with values from the following sources:",
+//                    sink, iCfg.getMethodOf(sink.getSink()).getSignature() );
+//			for (ResultSourceInfo source : results.getResults().get(sink)) {
+//				logger.info("- {} in method {}",source, iCfg.getMethodOf(source.getSource()).getSignature());
+//				if (source.getPath() != null) {
+//					logger.info("\ton Path: ");
+//					for (Unit p : source.getPath()) {
+//						logger.info("\t -> " + iCfg.getMethodOf(p));
+//						logger.info("\t\t -> " + p);
+//					}
+//				}
+//			}
+//		}
 		
 		for (ResultsAvailableHandler handler : onResultsAvailable)
 			handler.onResultsAvailable(iCfg, results);

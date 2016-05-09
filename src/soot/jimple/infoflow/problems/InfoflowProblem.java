@@ -157,8 +157,10 @@ public class InfoflowProblem extends AbstractInfoflowProblem {
 					// Special handling for array (de)construction
 					if (leftValue instanceof ArrayRef && targetType != null)
 						targetType = buildArrayOrAddDimension(targetType);
-					else if (assignStmt.getRightOp() instanceof ArrayRef && targetType != null)
-						targetType = ((ArrayType) targetType).getElementType();
+					else if (assignStmt.getRightOp() instanceof ArrayRef && targetType != null){
+						if(targetType instanceof ArrayType) 
+							targetType = ((ArrayType) targetType).getElementType();
+					}
 					
 					// If this is an unrealizable typecast, drop the abstraction
 					if (rightValue instanceof CastExpr) {
@@ -500,7 +502,8 @@ public class InfoflowProblem extends AbstractInfoflowProblem {
 						Set<Abstraction> resAbs = new HashSet<Abstraction>(resMapping.size());
 						if (res != null && !res.isEmpty())
 							resAbs.addAll(res);
-						for (AccessPath ap : resMapping)
+						for (AccessPath ap : resMapping){
+							if(ap == null) continue;
 							if (ap.isStaticFieldRef()) {
 								// Do not propagate static fields that are not read inside the callee
 								if (interproceduralCFG().isStaticFieldRead(dest, ap.getFirstField()))
@@ -510,6 +513,7 @@ public class InfoflowProblem extends AbstractInfoflowProblem {
 							// need to propagate it through
 							else if (source.isImplicit() || interproceduralCFG().methodReadsValue(dest, ap.getPlainValue()))
 								resAbs.add(source.deriveNewAbstraction(ap, stmt));
+						}
 						
 						return resAbs;
 					}
